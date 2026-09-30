@@ -48,7 +48,7 @@ export function parsePages(pages) {
       const date=lineText(l).match(/\b\d{2}\/\d{2}\/\d{4}\b/); if(date && !doc.date)doc.date=date[0];
       if(txt.includes('ת.משלוח') && !doc.number){const n=l.items.find(i=>/^\d{7,12}$/.test(i.str)); if(n)doc.number=n.str;}
       // "דף מתוך N" in the page header: refuse a file with missing pages.
-      const of=l.y>page.height*0.75 && l.items.map(i=>compact(i.str).match(/^דף\d*מתוך(\d{1,3})$/)).find(Boolean);
+      const of=l.y>page.height*0.75 && txt.match(/דף\d*מתוך(\d{1,3})/);
       if(of && Number(of[1])>pages.length)throw new Error(`בקובץ ${pages.length} עמודים, אבל התעודה מציינת ${of[1]}. יש לבחור את התעודה המלאה.`);
       const fields=[['חיובבגיןמכירה','gross'],['חיובבגיןאריזות','packaging'],['חיובבגיןחוקהפיקדון','deposit'],['הנחותבחשבונית','discount'],['הפרשיעיגול','rounding'],['סהכחיובלפנימעמ','beforeVat'],['סהככוללמעמ','total']];
       const f=fields.find(([label])=>txt.includes(label));
@@ -92,12 +92,14 @@ export function parsePages(pages) {
     if(supplyStart!==null){
       // The delivered total is the "סה"כ" column; ordered and free quantities
       // are to its left. Header words sit on three stacked lines.
-      const totalHead=supplyHeader && page.items.find(i=>Math.abs(i.y-supplyHeader.y)<=12 && compact(i.str)==='סהכ');
+      // Only the titled page's header: on a later page it may belong to the returns table.
+      const totalHead=supplyHeader && supplyTitle && page.items.find(i=>Math.abs(i.y-supplyHeader.y)<=12 && compact(i.str)==='סהכ');
       if(totalHead)supplyTotalRight=right(totalHead);
       else if(supplyTitle)supplyTotalRight=-1;
       for(const l of lines.filter(l=>l.y<supplyStart)){
         const t=compact(lineText(l));
-        if(t.includes('סהכ')||t.includes('מוחזרות')||t.includes('מפרטהתחשבנות')){supplyTotalRight=null;break;}
+        // A repeated column header also says סה"כ; only the total line ends a continued list.
+        if((supplyTitle?t.includes('סהכ'):t.startsWith('סהכ:'))||t.includes('מוחזרות')||t.includes('מפרטהתחשבנות')){supplyTotalRight=null;break;}
         const nums=l.items.filter(i=>numeric(i.str)).sort((a,b)=>b.x-a.x);
         const barcode=nums.find(i=>/^\d{12,14}$/.test(i.str));
         if(!barcode)continue;

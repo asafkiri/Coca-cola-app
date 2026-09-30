@@ -145,7 +145,7 @@ details>summary::-webkit-details-marker{display:none}
 .field input:focus{border-color:var(--rose)}
 .field input[inputmode]{text-align:center;direction:ltr}
 .field input::placeholder{color:#cbd5e1;font-weight:500}
-.field input[type=date]:invalid:not(:focus){color:var(--faint);font-weight:500}
+.field input.empty:not(:focus){color:var(--faint);font-weight:500}
 .names{display:flex;flex-wrap:wrap;gap:6px;margin:2px 0 12px;align-items:center}
 .names .hint{width:100%;font-size:11px}
 .name-chip{font-size:12px;font-weight:700;background:var(--page);border:1px solid var(--line);border-radius:8px;padding:6px 10px;color:#334155;min-height:40px;text-align:right}

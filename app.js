@@ -60,11 +60,12 @@ function confirmDialog(title, text, ok, onOk) {
 // ---------- views ----------
 // Browser/phone Back moves between screens, as in the other apps.
 const DEPTH = {upload: 0, document: 1, pick: 2, signs: 3};
+const PAGE = String(Math.random()); // history entries left from before a reload are skipped
 function show(view, fromHistory = false) {
   if (state.busy) return;
   if (view === 'signs' && !state.signs.length) view = state.doc ? 'pick' : 'upload';
   if (!fromHistory && state.doc && view !== state.view) {
-    try { if (DEPTH[view] > DEPTH[state.view] && view !== 'document') history.pushState({coca: view}, ''); else history.replaceState({coca: view}, ''); } catch {}
+    try { if (DEPTH[view] > DEPTH[state.view] && view !== 'document') history.pushState({coca: view, page: PAGE}, ''); else history.replaceState({coca: view, page: PAGE}, ''); } catch {}
   }
   state.view = view;
   for (const v of ['upload', 'document', 'pick', 'signs']) $(`#${v}-view`).hidden = v !== view;
@@ -99,7 +100,7 @@ function groupsOf(doc) {
 function promoTitle(p) { return p.text || `מבצע ${p.id}`; }
 function savedWithVat(rows) { return round(gross(-rows.reduce((a, r) => a + r.discount, 0), state.doc.vatBp)); }
 function itemHtml(row, groupPct) {
-  const d = state.doc, units = unitsOf(row), src = state.units[row.code]?.source;
+  const d = state.doc, units = unitsOf(row);
   const crate = round(crateCost(row, d.vatBp));
   const unit = units ? unitParts(row, d.vatBp, units) : null;
   const lineVat = round(gross(row.total, d.vatBp));
@@ -108,7 +109,6 @@ function itemHtml(row, groupPct) {
   const price = !unit ? `<div class="price-main">${num(money(crate))}<small>לארגז</small></div>`
     : pack > 1 ? `<div class="price-main">${num(money(round(times(unit.total, pack))))}<small>${perSale(row)}</small></div><div class="price-sub">${num(money(round(unit.total)))} ליח׳ · ${num(money(crate))} לארגז</div>`
     : `<div class="price-main">${num(money(round(unit.total)))}<small>ליח׳</small></div><div class="price-sub">${num(money(crate))} לארגז</div>`;
-  const inferred = unitsFromDeposit(row, d.vatBp);
   const breakdown = pairs([
     [`מחיר ספק לארגז, לפני הנחה (ללא מע״מ)`, money(row.unitPrice)],
     [`סחורה: ${crates(row.quantityMilli)} (ללא מע״מ)`, money(row.gross)],
@@ -131,14 +131,20 @@ function itemHtml(row, groupPct) {
       </summary>
       <div class="item-details">
         ${breakdown}
-        ${units ? `<label class="units-field">יחידות בארגז <input inputmode="numeric" data-units="${esc(row.code)}" value="${units}" aria-label="יחידות בארגז ${esc(row.name)}"></label>
-        <p class="hint">${src === 'deposit' ? 'חושב לפי הפיקדון בתעודה (30 אג׳ ליחידה). אפשר לתקן.' : 'הוזן ידנית ונשמר במכשיר הזה לפעם הבאה.'}${src === 'user' && inferred && inferred !== units ? ` לפי הפיקדון בתעודה: ${inferred}. מחיקת המספר מחזירה אותו.` : ''}</p>` : ''}
+        ${units ? unitsField(row) : ''}
       </div>
     </details>
     ${units ? '' : `<label class="units-ask">${UNITS_Q} <input inputmode="numeric" data-units="${esc(row.code)}" placeholder="למשל 20" aria-label="יחידות בארגז ${esc(row.name)}"></label>`}
   </article>`;
 }
 const UNITS_Q = 'כמה בקבוקים או פחיות בארגז?';
+function unitsField(row) {
+  const units = unitsOf(row), src = state.units[row.code]?.source, inferred = unitsFromDeposit(row, state.doc.vatBp);
+  const hint = src === 'deposit' ? 'חושב לפי הפיקדון בתעודה (30 אג׳ ליחידה). אפשר לתקן.'
+    : src === 'user' ? 'הוזן ידנית ונשמר במכשיר הזה לפעם הבאה.' + (inferred && inferred !== units ? ` לפי הפיקדון בתעודה: ${inferred}. מחיקת המספר מחזירה אותו.` : '')
+    : 'לא ניתן לחשב מהתעודה. הזן כמה בקבוקים או פחיות יש בארגז אחד.';
+  return `<label class="units-field">יחידות בארגז <input inputmode="numeric" data-units="${esc(row.code)}" value="${units || ''}" aria-label="יחידות בארגז ${esc(row.name)}"></label><p class="hint">${hint}</p>`;
+}
 function renderDocument() {
   const d = state.doc, s = d.summary;
   const cratesTotal = d.rows.reduce((a, r) => a + r.quantityMilli, 0);
@@ -180,7 +186,13 @@ function refreshRows(code) {
     const el = $(`[data-row="${r.id}"]`); if (!el) continue;
     tmp.innerHTML = itemHtml(r, state.doc.promos.find(p => p.id === r.promoId)?.pctBp ?? null);
     el.querySelector('summary').innerHTML = tmp.querySelector('summary').innerHTML;
-    el.querySelector('.item-details').innerHTML = tmp.querySelector('.item-details').innerHTML;
+    // Exactly one units input per row: the amber question stays until the next
+    // full render, otherwise the field lives in the details.
+    const details = tmp.querySelector('.item-details'), ask = el.querySelector('.units-ask input');
+    details.querySelector('.units-field')?.nextElementSibling?.remove(); details.querySelector('.units-field')?.remove();
+    if (ask) { if (ask !== document.activeElement) ask.value = unitsOf(r) || ''; }
+    else details.insertAdjacentHTML('beforeend', unitsField(r));
+    el.querySelector('.item-details').innerHTML = details.innerHTML;
   }
 }
 function setUnits(code, value) {
@@ -230,7 +242,7 @@ function createSign(source, ids) {
 function togglePick(source) {
   const existing = signSource(source);
   if (existing) {
-    const remove = () => { state.signs = state.signs.filter(s => s !== existing); state.dirty = true; renderPick(); renderActionBar(); };
+    const remove = () => { state.signs = state.signs.filter(s => s !== existing); state.dirty = true; renderPick(); renderActionBar(); document.querySelector(`[data-pick="${source}"]`)?.focus({preventScroll: true}); };
     if (existing.touched) confirmDialog('הסרת השלט', 'הפרטים שהוזנו בשלט הזה יימחקו.', 'הסרה', remove); else remove();
     return;
   }
@@ -277,12 +289,15 @@ function recommendation(sign) {
   if (!q) return {missing: 'הקלד כמות במבצע כדי לקבל המלצה.'};
   const noUnits = rows.find(r => !unitsOf(r));
   if (noUnits) return {missing: 'units', row: noUnits};
+  if (mixedPacks(sign)) return {missing: MIXED};
   const m = markupBp(prefs.markup) ?? 2500;
   // A shared sign must cover the most expensive product in it.
   const all = rows.map(r => ({row: r, ...recommend(r, d.vatBp, unitsOf(r), m, q * packOf(r), prefs.rounding)}));
   return {...all.reduce((a, b) => b.cents > a.cents ? b : a), ranked: all.some(x => x.cents !== all[0].cents)};
 }
 function packSign(sign) { const rows = signRows(sign); return rows.length > 0 && rows.every(r => packOf(r) > 1); }
+const MIXED = 'בשלט יש גם מארזים וגם יחידות בודדות. כדאי להפריד לשני שלטים.';
+function mixedPacks(sign) { return signRows(sign).some(r => packOf(r) > 1) && !packSign(sign); }
 function recHtml(sign) {
   const r = recommendation(sign);
   if (r.missing === 'units') return `<label class="rec missing">${esc(r.row.name)}: ${UNITS_Q} <input inputmode="numeric" data-units="${esc(r.row.code)}" placeholder="למשל 20"></label>`;
@@ -293,7 +308,7 @@ function recHtml(sign) {
   return `<div class="rec"><span>💡 ${text}</span><button type="button" class="use" data-apply="${sign.id}">השתמש</button></div>`;
 }
 function profitHtml(sign) {
-  if (sign.kind === 'pct') return '';
+  if (sign.kind === 'pct' || mixedPacks(sign)) return '';
   const sale = cents(sign.price), q = bundleQty(sign);
   if (!sale || !q) return '';
   const d = state.doc;
@@ -323,7 +338,7 @@ function editorHtml(sign, index) {
     <div class="fields ${sign.kind}">${fields}</div>
     <div id="rec-${sign.id}">${recHtml(sign)}</div>
     <div id="profit-${sign.id}">${profitHtml(sign)}</div>
-    <div class="fields two">${field(sign, 'validUntil', 'בתוקף עד', 'type="date" required')}${field(sign, 'note', 'הערה (לא חובה)', 'maxlength="80" placeholder="עד גמר המלאי"')}</div>
+    <div class="fields two">${field(sign, 'validUntil', 'בתוקף עד (רשות)', `type="date"${sign.validUntil ? '' : ' class="empty"'}`)}${field(sign, 'note', 'הערה (לא חובה)', 'maxlength="80" placeholder="עד גמר המלאי"')}</div>
   </article>`;
 }
 function renderSigns() {
@@ -379,6 +394,7 @@ function problems() {
     else if (s.kind !== 'pct') {
       const q = bundleQty(s), noUnits = signRows(s).find(r => !unitsOf(r));
       if (noUnits) out.push(`${name}: חסר מספר היחידות בארגז של ${noUnits.name}, המחיר לא נבדק מול העלות`);
+      else if (mixedPacks(s)) out.push(`${name}: ${MIXED}`);
       if (signRows(s).some(r => unitsOf(r) && realizedMarkup(r, state.doc.vatBp, unitsOf(r), q * packOf(r), d.priceCents) < 0)) out.push(`${name}: המחיר נמוך מהעלות`);
       if (d.oldCents && d.oldCents <= d.priceCents) out.push(`${name}: מחיר ה"במקום" אינו גבוה ממחיר המבצע`);
     }
@@ -517,6 +533,7 @@ document.addEventListener('input', e => {
   }
   const sign = signById(el.dataset.sign); if (!sign || !el.dataset.f) return;
   sign[el.dataset.f] = el.value; sign.touched = true; state.dirty = true;
+  if (el.type === 'date') el.classList.toggle('empty', !el.value);
   if (el.dataset.f === 'title') sign.autoTitle = false;
   refreshSign(sign); schedulePreview();
 });
@@ -531,6 +548,7 @@ document.addEventListener('change', e => {
   }
 });
 window.addEventListener('popstate', e => {
+  if (e.state?.coca && e.state.page !== PAGE) { history.back(); return; }
   if (state.busy || !state.doc) return;
   for (const d of document.querySelectorAll('dialog[open]')) d.close();
   notice(''); show(e.state?.coca || 'document', true);

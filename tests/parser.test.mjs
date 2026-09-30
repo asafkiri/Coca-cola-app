@@ -87,3 +87,13 @@ test('the supply list may continue on the next page without its title',()=>{
   p.splice(1,0,{width:612,height:792,items:[{str:'ת. משלוח - הקפה',x:481,y:655,w:60,h:8},{str:'7290000000001',x:503,y:620,w:58,h:8},{str:'10000',x:447,y:620,w:22,h:8},{str:'מוצר דוגמה',x:360,y:620,w:60,h:8},{str:'2',x:263,y:620,w:5,h:8},{str:'סה"כ:',x:339,y:600,w:20,h:8},{str:'2',x:263,y:600,w:5,h:8}]});
   const d=parsePages(p);assert.equal(d.supplyRows.length,1);assert.equal(d.rows[0].barcode,'7290000000001');
 });
+test('a continued supply list with a repeated column header keeps reading until its total line',()=>{
+  const p=fixture();
+  p.unshift({width:612,height:792,items:[{str:'מ פ ר ט',x:313,y:260,w:20,h:8},{str:'א ס פ ק ה',x:274,y:260,w:30,h:8},{str:"מס' ברקוד",x:528,y:247,w:34,h:8},{str:'קוד',x:459,y:247,w:12,h:8},{str:'סה"כ',x:251,y:247,w:18,h:8},{str:'שם המוצר',x:394,y:242,w:33,h:8}]});
+  p.splice(1,0,{width:612,height:792,items:[{str:'ת. משלוח - הקפה',x:481,y:655,w:60,h:8},{str:"מס' ברקוד",x:528,y:640,w:34,h:8},{str:'קוד',x:459,y:640,w:12,h:8},{str:'סה"כ',x:251,y:640,w:18,h:8},{str:'שם המוצר',x:394,y:635,w:33,h:8},{str:'7290000000001',x:503,y:620,w:58,h:8},{str:'10000',x:447,y:620,w:22,h:8},{str:'מוצר דוגמה',x:360,y:620,w:60,h:8},{str:'2',x:263,y:620,w:5,h:8},{str:'סה"כ:',x:339,y:600,w:20,h:8},{str:'2',x:263,y:600,w:5,h:8}]});
+  const d=parsePages(p);assert.equal(d.supplyRows.length,1);assert.equal(d.rows[0].barcode,'7290000000001');
+});
+test('"דף מתוך N" split into separate items is still checked',()=>{
+  const p=fixture();p[0].items.push({str:'דף',x:270,y:700,w:10,h:8},{str:'מתוך 3',x:240,y:700,w:25,h:8});
+  assert.throws(()=>parsePages(p),/עמודים/);
+});
