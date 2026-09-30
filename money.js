@@ -29,12 +29,38 @@ export function ceil(r) {
   if (r.n < 0n) throw new Error('מחיר לא יכול להיות שלילי');
   return Number((r.n + r.d - 1n) / r.d);
 }
+const amountFormat = new Intl.NumberFormat('he-IL', {minimumFractionDigits:2, maximumFractionDigits:2});
+// ₪ before the number, like the other apps: ₪1,234.50 / −₪75.19.
 export function money(cents) {
-  return new Intl.NumberFormat('he-IL', {style:'currency',currency:'ILS'}).format(cents / 100);
+  return (cents < 0 ? '−' : '') + '₪' + amountFormat.format(Math.abs(cents) / 100);
+}
+export function percent(bp) {
+  return new Intl.NumberFormat('he-IL', {maximumFractionDigits:2}).format(bp / 100) + '%';
 }
 export function gross(cents, vatBp) { return fraction(BigInt(cents) * BigInt(10000 + vatBp), 10000); }
 export function crateCost(row, vatBp) {
   return fraction(BigInt(row.total) * BigInt(10000 + vatBp) * 1000n, 10000n * BigInt(row.quantityMilli));
+}
+// Deposit law: 30 agorot per container including VAT; the document prints it
+// before VAT. The count is only suggested when it reproduces the printed
+// deposit to the agora, so a changed deposit rate falls back to asking.
+export const DEPOSIT_PER_CONTAINER = 30;
+export function unitsFromDeposit(row, vatBp) {
+  if (!Number.isSafeInteger(row.deposit) || row.deposit <= 0 || !(row.quantityMilli > 0) || !Number.isInteger(vatBp)) return null;
+  const vat = BigInt(10000 + vatBp), qty = BigInt(row.quantityMilli), rate = BigInt(DEPOSIT_PER_CONTAINER);
+  const units = round(fraction(BigInt(row.deposit) * vat * 1000n, rate * 10000n * qty));
+  if (units < 1 || units > 1000) return null;
+  const printed = round(fraction(qty * BigInt(units) * rate * 10000n, 1000n * vat));
+  if (Math.abs(printed - row.deposit) > 1) return null;
+  // "6 בק" / "6 פח": a case holds whole multipacks.
+  const pack = packSize(row.name);
+  if (pack > 1 && units % pack !== 0) return null;
+  return units;
+}
+// Containers in a multipack named like "קרלסברג 6 בק" or "ZERO 6 פח"; 1 otherwise.
+export function packSize(name) {
+  const m = String(name || '').match(/(?:^|\s)(\d{1,2})\s*(?:בק|פח)(?=\s|$)/);
+  return m && Number(m[1]) > 1 ? Number(m[1]) : 1;
 }
 export function unitParts(row, vatBp, units) {
   if (!Number.isInteger(units) || units <= 0 || units > 10000) throw new Error('יש להזין מספר בקבוקים שלם וחיובי');
@@ -62,24 +88,6 @@ export function realizedMarkup(row, vatBp, units, quantity, saleCents) {
   const b = Number(p.base.n) / Number(p.base.d) * quantity;
   const pass = Number(p.pass.n) / Number(p.pass.d) * quantity;
   return b > 0 ? (saleCents - pass - b) / b * 100 : null;
-}
-export function discountSale(row, vatBp, units, oldCents, discountBp) {
-  if (!Number.isSafeInteger(oldCents) || oldCents <= 0 || !Number.isInteger(discountBp) || discountBp <= 0 || discountBp >= 10000) throw new Error('מחיר רגיל או אחוז הנחה לא תקין');
-  const {pass} = unitParts(row, vatBp, units);
-  const merchandise = BigInt(oldCents) * pass.d - pass.n;
-  if (merchandise <= 0n) throw new Error('המחיר הרגיל חייב להיות גבוה מהפיקדון והאריזה');
-  return round(fraction(merchandise * BigInt(10000-discountBp) + pass.n * 10000n, pass.d*10000n));
-}
-export function recommendedDiscount(row, vatBp, units, markupBp, oldCents, rounding='exact') {
-  const rec = recommend(row, vatBp, units, markupBp, 1, rounding);
-  if (!Number.isSafeInteger(oldCents) || oldCents <= 0) throw new Error('יש להזין מחיר רגיל תקין');
-  const {pass} = rec.parts;
-  const denominator = BigInt(oldCents) * pass.d - pass.n;
-  if (denominator <= 0n) throw new Error('המחיר הרגיל חייב להיות גבוה מהפיקדון והאריזה');
-  if (oldCents <= rec.cents) throw new Error('אין הנחה אפשרית מהמחיר הרגיל ברווח שבחרת');
-  const percent = Number(BigInt(oldCents-rec.cents) * pass.d * 100n / denominator);
-  if (percent <= 0) throw new Error('אין הנחה אפשרית מהמחיר הרגיל ברווח שבחרת');
-  return Math.min(99,percent);
 }
 export function validateInvoice(doc) {
   const errors = [];

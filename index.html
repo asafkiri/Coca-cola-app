@@ -3,42 +3,92 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="theme-color" content="#c91435">
-  <meta name="description" content="מחיר סופי לארגז מתוך תעודת קוקה־קולה והכנת שלטי מבצע. התעודה מעובדת במכשיר בלבד.">
+  <meta name="theme-color" content="#b3122d">
+  <meta name="description" content="מחירים סופיים מתעודת קוקה־קולה והכנת שלטי מבצע. התעודה נקראת במכשיר בלבד.">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; worker-src 'self' blob:; img-src 'self' data: blob:; style-src 'self'; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'">
   <title>קוקה־קולה · מחירים ושלטים</title>
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="preload" href="fonts/heebo-hebrew.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="styles.css">
   <script type="module" src="app.js"></script>
 </head>
 <body>
   <header class="topbar">
-    <div class="top-inner"><div class="brand"><span class="brand-icon" aria-hidden="true">▤</span><div><strong>מחירים ושלטים</strong><span>לתעודות קוקה־קולה</span></div></div><button class="icon-button" id="settings-button" aria-label="הגדרות">⚙</button></div>
+    <div class="top-inner">
+      <div class="brand">
+        <span class="logo" aria-hidden="true">ק</span>
+        <div><strong>קוקה־קולה</strong><span>מחירים ושלטי מבצע</span></div>
+      </div>
+      <button class="icon-button" id="settings-button" type="button" aria-label="הגדרות">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="6.5"/><circle cx="12" cy="12" r="2.5"/><path class="teeth" d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></svg>
+      </button>
+    </div>
   </header>
   <main>
-    <nav class="tabs" aria-label="מסכי האפליקציה"><button id="document-tab" class="active" aria-current="page">התעודה שלי</button><button id="signs-tab" disabled>שלטי מבצע <span id="sign-count">0</span></button></nav>
     <div id="notice" role="alert" hidden></div>
-    <section id="document-view">
-      <div id="upload-panel" class="upload-panel">
-        <div class="upload-symbol" aria-hidden="true">↑</div><h1>כמה באמת עולה כל ארגז?</h1><p>בחר תעודת PDF שהורדת מאפליקציית קוקה־קולה.</p>
-        <button class="primary" id="upload-button">בחירת תעודה</button>
-        <p class="local-note">התעודה נשארת במכשיר שלך. משתמשים רק כשצריך.</p>
+    <section id="upload-view">
+      <div class="upload-card">
+        <div class="upload-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M4 20h16"/></svg></div>
+        <h1>כמה עולה לך כל מוצר?</h1>
+        <p>בוחרים את תעודת ה־PDF שהורדת מאפליקציית קוקה־קולה, ומקבלים מחיר סופי לארגז וליחידה.</p>
+        <button class="btn primary big" id="upload-button" type="button">בחירת תעודה</button>
+        <p class="fine">התעודה נקראת במכשיר שלך ואינה נשלחת לשום מקום.</p>
       </div>
-      <input id="pdf-file" type="file" accept="application/pdf,.pdf" hidden>
-      <div id="loading" class="loading" role="status" hidden><span class="spinner"></span><strong id="loading-label">קורא ובודק את התעודה…</strong></div>
-      <div id="document-content" hidden></div>
     </section>
+    <div id="loading" class="loading" role="status" hidden><span class="spinner" aria-hidden="true"></span><strong id="loading-label"></strong></div>
+    <section id="document-view" hidden></section>
+    <section id="pick-view" hidden></section>
     <section id="signs-view" hidden>
-      <div class="section-heading"><div><h1>עריכת שלטים</h1><p>המחיר לבקבוק מחושב לפי הכמות שתזין.</p></div><button class="secondary" id="add-sign">＋ הוסף שלט</button></div>
+      <div class="screen-head"><h1>עריכת שלטים</h1><p>ממלאים את הפרטים, והתצוגה למטה מתעדכנת מיד.</p></div>
       <div id="sign-editors"></div>
-      <section id="preview-area" hidden><div class="preview-heading"><h2>תצוגה לפני הדפסה</h2><fieldset id="layout-picker"><legend class="sr-only">שלטים בדף</legend><label><input type="radio" name="layout" value="4" checked>4 בדף</label><label><input type="radio" name="layout" value="2">2 בדף</label><label><input type="radio" name="layout" value="1">1 בדף</label></fieldset></div><div id="preview-pages"></div><div class="export-actions"><button class="primary" id="share-signs">שיתוף / שמירת תמונה</button><button class="secondary" id="print-signs">הדפסה / PDF</button></div><p class="help">רק תוכן השלטים מופיע בהדפסה ובתמונה. מחירי הקנייה אינם מופיעים.</p></section>
+      <div class="preview-head">
+        <h2>תצוגה מקדימה</h2>
+        <div class="seg small" role="group" aria-label="שלטים בדף">
+          <button type="button" data-per-page="4">4 בדף</button>
+          <button type="button" data-per-page="2">2 בדף (גדול)</button>
+          <button type="button" data-per-page="1">1 בדף (רוחב)</button>
+        </div>
+      </div>
+      <div id="preview-pages"></div>
     </section>
-    <footer class="app-footer">כל תעודה עומדת בפני עצמה <span>·</span> גרסה 1.0</footer>
+    <footer class="app-footer">כל תעודה נקראת בנפרד ואינה נשמרת · גרסה 2</footer>
   </main>
-  <div id="selection-bar" hidden><span id="selected-label"></span><div><button id="separate-signs" class="primary">שלט לכל מוצר</button><button id="shared-sign" class="secondary">שלט משותף</button></div></div>
-  <dialog id="settings-dialog"><form method="dialog"><div class="dialog-heading"><h2>הגדרות שלטים</h2><button class="icon-button" aria-label="סגור">×</button></div><label>שם החנות בשלט<input id="store-name" maxlength="45" autocomplete="organization"></label><label>תוספת רווח כברירת מחדל (%)<input id="default-markup" type="text" inputmode="decimal"></label><p class="help">תוספת לעלות הסחורה, כמו בייטבתה. פיקדון וערך אריזה מצטרפים ללא תוספת רווח.</p><p class="help">ההגדרות נשמרות רק בדפדפן הזה. התעודות והשלטים הפעילים אינם נשמרים לאחר סגירת הדף או רענון.</p><button type="button" id="save-settings" class="primary">שמירת הגדרות</button></form></dialog>
-  <dialog id="products-dialog"><div class="dialog-heading"><h2>מוצרים בשלט</h2><button id="close-products" class="icon-button" aria-label="סגור">×</button></div><div id="product-options"></div><button id="save-products" class="primary">עדכון המוצרים</button></dialog>
-  <div id="toast" role="status" hidden></div><div id="print-root"></div>
+  <nav id="action-bar" hidden></nav>
+  <input id="pdf-file" type="file" accept="application/pdf,.pdf" hidden>
+
+  <dialog id="settings-dialog" aria-labelledby="settings-title">
+    <form id="settings-form">
+      <div class="dialog-head"><h2 id="settings-title">הגדרות</h2><button class="icon-button plain" type="button" data-close aria-label="סגירה">×</button></div>
+      <label class="field">שם החנות (מופיע על השלטים)<input id="store-name" maxlength="45" autocomplete="organization"></label>
+      <label class="field">רווח מומלץ למבצעים (%)<input id="default-markup" inputmode="decimal" autocomplete="off"></label>
+      <p class="hint">הרווח מחושב על העלות. פיקדון וערך אריזה מתווספים למחיר בלי רווח.</p>
+      <fieldset class="field">
+        <legend>עיגול המחיר המומלץ</legend>
+        <div class="seg">
+          <label><input type="radio" name="rounding" value="ninety">כלפי מעלה ל־‎.90</label>
+          <label><input type="radio" name="rounding" value="exact">מדויק לאגורה</label>
+        </div>
+      </fieldset>
+      <p class="hint">ההגדרות נשמרות בדפדפן הזה בלבד.</p>
+      <button class="btn primary wide" type="submit">שמירה</button>
+    </form>
+  </dialog>
+
+  <dialog id="products-dialog" aria-labelledby="products-title">
+    <div class="dialog-head"><h2 id="products-title">מוצרים בשלט</h2><button class="icon-button plain" type="button" data-close aria-label="סגירה">×</button></div>
+    <div id="product-options"></div>
+    <div class="dialog-foot"><button class="btn primary wide" id="save-products" type="button">עדכון המוצרים</button></div>
+  </dialog>
+
+  <dialog id="confirm-dialog" class="confirm" aria-labelledby="confirm-title">
+    <div class="confirm-icon" aria-hidden="true">!</div>
+    <h2 id="confirm-title"></h2>
+    <p id="confirm-text"></p>
+    <div class="confirm-actions"><button class="btn light" type="button" data-close>ביטול</button><button class="btn danger" id="confirm-ok" type="button"></button></div>
+  </dialog>
+
+  <div id="toast" role="status" hidden></div>
+  <div id="print-root" aria-hidden="true"></div>
   <noscript>יש להפעיל JavaScript בדפדפן כדי לקרוא תעודות ולהכין שלטים.</noscript>
 </body>
 </html>
