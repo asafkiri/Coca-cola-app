@@ -23,6 +23,7 @@
         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="6.5"/><circle cx="12" cy="12" r="2.5"/><path class="teeth" d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></svg>
       </button>
     </div>
+    <nav class="mode-tabs" aria-label="מסכי האפליקציה"><button type="button" data-mode="doc">תעודה</button><button type="button" data-mode="calc">בדיקת מחיר</button></nav>
   </header>
   <main>
     <div id="notice" role="alert" hidden></div>
@@ -38,6 +39,7 @@
     <div id="loading" class="loading" role="status" hidden><span class="spinner" aria-hidden="true"></span><strong id="loading-label"></strong></div>
     <section id="document-view" hidden></section>
     <section id="pick-view" hidden></section>
+    <section id="calc-view" hidden></section>
     <section id="signs-view" hidden>
       <div class="screen-head"><h1>עריכת שלטים</h1><p>ממלאים את הפרטים, והתצוגה למטה מתעדכנת מיד.</p></div>
       <div id="sign-editors"></div>
@@ -62,6 +64,8 @@
       <label class="field">שם החנות (מופיע על השלטים)<input id="store-name" maxlength="45" autocomplete="organization"></label>
       <label class="field">רווח מומלץ למבצעים (%)<input id="default-markup" inputmode="decimal" autocomplete="off"></label>
       <p class="hint">הרווח מחושב על העלות. הפיקדון מתווסף למחיר בלי רווח; ערך אריזה חוזרת לא נכלל.</p>
+      <label class="field">מע״מ לבדיקת מחיר בלי תעודה (%)<input id="calc-vat" inputmode="decimal" autocomplete="off"></label>
+      <p class="hint">בתעודה המע״מ נקרא מהתעודה עצמה.</p>
       <fieldset class="field">
         <legend>עיגול המחיר המומלץ</legend>
         <div class="seg">

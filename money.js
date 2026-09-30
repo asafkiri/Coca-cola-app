@@ -80,7 +80,11 @@ export function unitParts(row, vatBp, units) {
 export function recommend(row, vatBp, units, markupBp, quantity = 1, rounding = 'exact') {
   if (!Number.isInteger(markupBp) || markupBp < 0 || markupBp > 100000) throw new Error('אחוז הרווח חייב להיות בין 0 ל־1,000');
   if (!Number.isInteger(quantity) || quantity < 1 || quantity > 1000) throw new Error('כמות המבצע חייבת להיות מספר שלם וחיובי');
-  const p = unitParts(row, vatBp, units);
+  return recommendParts(unitParts(row, vatBp, units), markupBp, quantity, rounding);
+}
+// Markup on base (merchandise + purchase tax, incl. VAT); pass (deposit) is
+// added once. base and pass share one denominator.
+export function recommendParts(p, markupBp, quantity = 1, rounding = 'exact') {
   const raw = fraction((p.base.n * BigInt(10000 + markupBp) + p.pass.n * 10000n) * BigInt(quantity), p.base.d * 10000n);
   let cents = ceil(raw); // never recommend below the requested markup
   if (rounding === 'ninety') {
@@ -88,6 +92,25 @@ export function recommend(row, vatBp, units, markupBp, quantity = 1, rounding = 
     cents = cents <= target ? target : target + 100;
   }
   return {cents, parts:p};
+}
+// Price check without an invoice, from what the supplier's ordering app shows:
+// case price and purchase tax before VAT, discount on the goods only, and the
+// deposit per container as the consumer amount (already incl. VAT).
+export function manualPrice({priceCents, discountBp = 0, taxCents = 0, depositCents = 0, units = null}, vatBp) {
+  for (const v of [priceCents, discountBp, taxCents, depositCents, vatBp]) if (!Number.isSafeInteger(v) || v < 0) throw new Error('ערך לא תקין');
+  if (!(priceCents > 0) || discountBp >= 10000) throw new Error('ערך לא תקין');
+  if (units !== null && (!Number.isInteger(units) || units < 1 || units > 1000)) throw new Error('מספר יחידות לא תקין');
+  const d = 100000000n; // amounts below are in agorot × d
+  const goods = BigInt(priceCents) * BigInt(10000 - discountBp) * 10000n;
+  const beforeVat = goods + BigInt(taxCents) * d;
+  const merch = beforeVat * BigInt(10000 + vatBp) / 10000n; // exact: d is a multiple of 10000
+  const deposit = units ? BigInt(depositCents) * BigInt(units) * d : 0n;
+  const out = {goods: fraction(goods, d), beforeVat: fraction(beforeVat, d), vat: fraction(merch - beforeVat, d), deposit: fraction(deposit, d), crate: fraction(merch + deposit, d), unit: null};
+  if (units) {
+    const du = d * BigInt(units);
+    out.unit = {base: fraction(merch, du), pass: fraction(BigInt(depositCents) * du, du), total: fraction(merch + deposit, du)};
+  }
+  return out;
 }
 export function realizedMarkup(row, vatBp, units, quantity, saleCents) {
   const p = unitParts(row, vatBp, units);

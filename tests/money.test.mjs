@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {fixed,fraction,round,money,percent,gross,crateCost,unitParts,unitsFromDeposit,packSize,priceBasis,recommend,realizedMarkup,validateInvoice} from '../money.js';
+import {fixed,fraction,round,money,percent,gross,crateCost,unitParts,unitsFromDeposit,packSize,priceBasis,recommend,recommendParts,manualPrice,realizedMarkup,validateInvoice} from '../money.js';
 const row=()=>({id:'x',code:'10000',name:'מוצר בדיקה',unitPrice:5000,quantityMilli:2000,gross:10000,discountBp:2000,discount:-2000,packaging:2000,tax:1000,deposit:1000,total:12000});
 const doc=()=>({rows:[row()],vatBp:1800,supplyRows:[{code:'10000',quantityMilli:2000}],summary:{gross:10000,discount:-2000,packaging:2000,tax:1000,deposit:1000,rounding:0,beforeVat:12000,vat:2160,total:14160}});
 test('parse PDF amounts without floating point or losing trailing minus',()=>{assert.equal(fixed('1,234.56-'),-123456);assert.equal(fixed('0.00'),0);assert.equal(fixed('18.0'),1800);assert.equal(fixed('2.5',3),2500);for(const s of ['',null,'3,4','1.234','NaN','12₪','Infinity'])assert.throws(()=>fixed(s));});
@@ -44,4 +44,19 @@ test('returnable packaging is set aside from prices and recommendations',()=>{
   assert.equal(round(crateCost(b,1800)),12074);assert.equal(round(unitParts(b,1800,20).total),604);
   assert.equal(recommend(b,1800,20,2500,1,'ninety').cents,790);
   assert.equal(priceBasis(row()).total,10000);assert.equal(priceBasis({...row(),packaging:0}).total,12000);
+});
+test('price check without an invoice matches the invoice rows',()=>{
+  // Values as the supplier's ordering app shows them (case price and purchase tax before VAT).
+  const six=manualPrice({priceCents:14638,discountBp:3400,taxCents:412,depositCents:30,units:24},1800);
+  assert.equal(round(six.crate),12606);assert.equal(round(six.unit.total),525);
+  const coke=manualPrice({priceCents:9399,discountBp:1600,depositCents:30,units:24},1800);
+  assert.equal(round(coke.crate),10036);assert.equal(round(coke.unit.total),418);assert.equal(round(coke.unit.pass),30);
+  const returnable=manualPrice({priceCents:10557,discountBp:800,taxCents:520,units:20},1800);
+  assert.equal(round(returnable.crate),12074);assert.equal(round(returnable.unit.total),604);
+  assert.equal(recommendParts(returnable.unit,2500,1,'ninety').cents,790);
+  assert.equal(recommendParts(coke.unit,2500,1,'ninety').cents,590);
+  // Units are optional; the deposit then cannot be added per case.
+  const noUnits=manualPrice({priceCents:9399,discountBp:1600,depositCents:30},1800);
+  assert.equal(noUnits.unit,null);assert.equal(round(noUnits.crate),9316);
+  for(const bad of [{priceCents:0},{priceCents:100,discountBp:10000},{priceCents:100,units:0},{priceCents:100,taxCents:-1},{priceCents:1.5}])assert.throws(()=>manualPrice(bad,1800));
 });

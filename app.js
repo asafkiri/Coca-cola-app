@@ -1,5 +1,5 @@
 import {readPdf} from './pdf-reader.js';
-import {fixed, fraction, round, money, percent, gross, crateCost, unitParts, unitsFromDeposit, packSize, priceBasis, recommend, realizedMarkup} from './money.js';
+import {fixed, fraction, round, money, percent, gross, crateCost, unitParts, unitsFromDeposit, packSize, priceBasis, recommend, recommendParts, manualPrice, realizedMarkup} from './money.js';
 import {drawPage, pageSize, signLine} from './sign-canvas.js';
 
 const MAX_SIGNS = 12;
@@ -14,16 +14,17 @@ const ICON = {
   check: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12l5 5 9-10"/></svg>',
 };
 
-const state = {doc: null, view: 'upload', units: {}, signs: [], perPage: 4, pages: [], busy: false, dirty: false, editProducts: null};
+const state = {doc: null, view: 'upload', docView: 'upload', units: {}, signs: [], perPage: 4, pages: [], busy: false, dirty: false, editProducts: null};
 let seq = 0;
 
 // ---------- preferences (browser only) ----------
-let prefs = {storeName: 'מיני מרקט שלום', markup: '25', rounding: 'ninety'};
+let prefs = {storeName: 'מיני מרקט שלום', markup: '25', rounding: 'ninety', vat: '18'};
 try {
   const saved = JSON.parse(localStorage.getItem('coca-prefs-v2') || localStorage.getItem('coca-prefs-v1') || 'null');
   if (saved && typeof saved.storeName === 'string' && saved.storeName.trim()) prefs.storeName = saved.storeName.trim().slice(0, 45);
   if (saved && typeof saved.markup === 'string' && markupBp(saved.markup) !== null) prefs.markup = saved.markup;
   if (saved && ['ninety', 'exact'].includes(saved.rounding)) prefs.rounding = saved.rounding;
+  if (saved && typeof saved.vat === 'string' && vatBpOf(saved.vat) !== null) prefs.vat = saved.vat;
 } catch {}
 // Bottle counts typed by the user, per supplier product code.
 let savedUnits = {};
@@ -41,6 +42,7 @@ function plural(n, one, many) { return n === 1 ? one : `${n} ${many}`; }
 function decimal(s) { return String(s ?? '').trim().replace(',', '.'); }
 function cents(s) { try { const v = fixed(decimal(s)); return v > 0 ? v : 0; } catch { return 0; } }
 function markupBp(s) { try { const v = fixed(decimal(s)); return v >= 0 && v <= 100000 ? v : null; } catch { return null; } }
+function vatBpOf(s) { try { const v = fixed(decimal(s)); return v >= 0 && v <= 10000 ? v : null; } catch { return null; } }
 function positiveInt(s, max = 1000) { return /^\d+$/.test(String(s).trim()) && Number(s) >= 1 && Number(s) <= max ? Number(s) : 0; }
 function quantity(row) { return new Intl.NumberFormat('he-IL', {maximumFractionDigits: 3}).format(row.quantityMilli / 1000); }
 function crates(milli) { const q = milli / 1000; return q === 1 ? 'ארגז אחד' : `${quantity({quantityMilli: milli})} ארגזים`; }
@@ -59,19 +61,24 @@ function confirmDialog(title, text, ok, onOk) {
 
 // ---------- views ----------
 // Browser/phone Back moves between screens, as in the other apps.
-const DEPTH = {upload: 0, document: 1, pick: 2, signs: 3};
+const DEPTH = {upload: 0, document: 1, calc: 1, pick: 2, signs: 3};
+const VIEWS = ['upload', 'document', 'pick', 'signs', 'calc'];
 const PAGE = String(Math.random()); // history entries left from before a reload are skipped
-function show(view, fromHistory = false) {
+// Switching tabs replaces the history entry instead of adding one.
+function show(view, fromHistory = false, replace = false) {
   if (state.busy) return;
   if (view === 'signs' && !state.signs.length) view = state.doc ? 'pick' : 'upload';
   if (!fromHistory && state.doc && view !== state.view) {
-    try { if (DEPTH[view] > DEPTH[state.view] && view !== 'document') history.pushState({coca: view, page: PAGE}, ''); else history.replaceState({coca: view, page: PAGE}, ''); } catch {}
+    try { if (!replace && DEPTH[view] > DEPTH[state.view] && view !== 'document') history.pushState({coca: view, page: PAGE}, ''); else history.replaceState({coca: view, page: PAGE}, ''); } catch {}
   }
   state.view = view;
-  for (const v of ['upload', 'document', 'pick', 'signs']) $(`#${v}-view`).hidden = v !== view;
+  if (view !== 'calc') state.docView = view;
+  for (const v of VIEWS) $(`#${v}-view`).hidden = v !== view;
+  for (const t of document.querySelectorAll('[data-mode]')) { const on = (t.dataset.mode === 'calc') === (view === 'calc'); t.classList.toggle('on', on); t.setAttribute('aria-pressed', on); }
   if (view === 'document') renderDocument();
   if (view === 'pick') renderPick();
   if (view === 'signs') renderSigns();
+  if (view === 'calc') renderCalc();
   renderActionBar();
   window.scrollTo({top: 0});
 }
@@ -81,6 +88,7 @@ function renderActionBar() {
   let html = '';
   if (state.view === 'document') html = `<button class="btn primary grow" type="button" data-go="pick">${ICON.print}${n ? `שלטי מבצע (${n})` : 'הכנת שלטי מבצע'}</button>`;
   if (state.view === 'pick') html = `<button class="btn light" type="button" data-go="document" aria-label="חזרה לתעודה">${ICON.back}</button><button class="btn primary grow" type="button" data-go="signs" ${n ? '' : 'disabled'}>המשך (${n})</button>`;
+  if (state.view === 'calc') html = `<button class="btn primary grow" type="button" data-calc-add>＋ מוצר נוסף</button>`;
   if (state.view === 'signs') html = `<button class="btn light" type="button" data-go="pick" aria-label="חזרה לבחירה">${ICON.back}</button><button class="btn primary grow" type="button" data-export="share">${ICON.share}שתף / שמור תמונה</button><button class="btn light" type="button" data-export="print" aria-label="הדפסה">${ICON.print}<span class="label">הדפסה</span></button>`;
   bar.innerHTML = html; bar.hidden = !html || state.busy;
 }
@@ -218,7 +226,7 @@ async function loadFile(file) {
   notice(''); state.busy = true;
   $('#loading-label').textContent = 'קורא ובודק את התעודה…';
   $('#loading').hidden = false; $('#action-bar').hidden = true;
-  for (const v of ['upload', 'document', 'pick', 'signs']) $(`#${v}-view`).hidden = true;
+  for (const v of VIEWS) $(`#${v}-view`).hidden = true;
   try {
     const doc = await readPdf(file, (n, total) => { $('#loading-label').textContent = `קורא ובודק עמוד ${n} מתוך ${total}…`; });
     state.doc = doc; state.signs = []; state.pages = []; state.dirty = false; state.units = {};
@@ -457,6 +465,70 @@ window.addEventListener('beforeprint', () => {
 });
 window.addEventListener('afterprint', () => { document.body.classList.remove('print-signs'); $('#print-root').replaceChildren(); });
 
+// ---------- price check without an invoice ----------
+// Filled from the supplier's ordering app; kept in this browser so switching
+// apps on the phone (which may reload the page) does not lose it.
+function newCalc() { return {id: `c${++seq}`, name: '', price: '', discount: '', tax: '', units: '', deposit: ''}; }
+let calcItems = [];
+try { calcItems = (JSON.parse(localStorage.getItem('coca-calc-v1') || '[]') || []).filter(i => i && typeof i === 'object').map(i => ({...newCalc(), ...Object.fromEntries(['name', 'price', 'discount', 'tax', 'units', 'deposit'].map(k => [k, String(i[k] ?? '').slice(0, 60)]))})); } catch {}
+if (!calcItems.length) calcItems = [newCalc()];
+function saveCalc() { store('coca-calc-v1', calcItems.map(({id, ...rest}) => rest)); }
+function amountOrZero(s) { if (!String(s).trim()) return 0; try { const v = fixed(decimal(s)); return v >= 0 ? v : null; } catch { return null; } }
+function calcInput(item) {
+  const errors = [];
+  const priceCents = cents(item.price);
+  const discountBp = amountOrZero(item.discount), taxCents = amountOrZero(item.tax), depositCents = amountOrZero(item.deposit);
+  const units = String(item.units).trim() ? positiveInt(item.units) || null : null;
+  if (discountBp === null || discountBp >= 10000) errors.push('אחוז ההנחה');
+  if (taxCents === null) errors.push('מס הקנייה');
+  if (depositCents === null) errors.push('הפיקדון');
+  if (String(item.units).trim() && !units) errors.push('יחידות בארגז (מספר שלם)');
+  return {priceCents, discountBp, taxCents, depositCents, units, errors};
+}
+function calcResultHtml(item) {
+  const vatBp = vatBpOf(prefs.vat) ?? 1800, vatText = percent(vatBp);
+  const c = calcInput(item);
+  if (!c.priceCents) return `<p class="calc-empty">הזן מחיר לארגז כדי לראות את המחיר הסופי.</p>`;
+  if (c.errors.length) return `<p class="calc-empty bad">בדוק: ${esc(c.errors.join(', '))}</p>`;
+  const r = manualPrice(c, vatBp), full = c.discountBp ? manualPrice({...c, discountBp: 0}, vatBp) : null;
+  const saved = full ? round(full.crate) - round(r.crate) : 0;
+  const rec = r.unit ? recommendParts(r.unit, markupBp(prefs.markup) ?? 2500, 1, prefs.rounding) : null;
+  const includes = ['מע״מ ' + vatText, c.discountBp ? 'הנחה' : '', c.taxCents ? 'מס קנייה' : '', r.unit && c.depositCents ? 'פיקדון' : ''].filter(Boolean);
+  return `<div class="calc-main">
+      <div><span>לארגז</span><strong>${num(money(round(r.crate)))}</strong></div>
+      ${r.unit ? `<div><span>ליחידה</span><strong>${num(money(round(r.unit.total)))}</strong></div>` : ''}
+    </div>
+    <p class="meta">כולל ${esc(includes.join(', '))}${saved > 0 ? ` · לפני ההנחה ${num(money(round(full.crate)))} · חסכת ${num(money(saved))} לארגז` : ''}</p>
+    ${r.unit ? '' : `<p class="hint">הזן יחידות בארגז כדי לראות מחיר ליחידה${c.depositCents ? ' ולכלול את הפיקדון' : ''}.</p>`}
+    ${rec ? `<div class="rec"><span>💡 מחיר מכירה מומלץ: <b>${num(money(rec.cents))}</b> ליח׳ <span>(רווח ${esc(prefs.markup)}%)</span></span></div>` : ''}
+    <details class="more"><summary>איך זה מחושב?</summary>${pairs([
+      ['מחיר לארגז, לפני מע״מ', money(c.priceCents)],
+      c.discountBp ? [`הנחה ${percent(c.discountBp)}`, money(-round(fraction(BigInt(c.priceCents) * BigInt(c.discountBp), 10000))), 'good'] : null,
+      c.taxCents ? ['מס קנייה', money(c.taxCents)] : null,
+      ['לפני מע״מ', money(round(r.beforeVat)), 'strong'],
+      [`מע״מ ${vatText}`, money(round(r.vat))],
+      r.unit && c.depositCents ? [`פיקדון (${c.units} × ${money(c.depositCents)})`, money(round(r.deposit))] : null,
+      ['לארגז', money(round(r.crate)), 'strong'],
+      r.unit ? [`ליחידה (חלקי ${c.units})`, money(round(r.unit.total)), 'strong'] : null,
+    ])}</details>`;
+}
+function calcField(item, key, label, attrs) {
+  return `<label class="field">${esc(label)}<input data-calc-f="${key}" data-calc="${item.id}" value="${esc(item[key])}" autocomplete="off" ${attrs}></label>`;
+}
+function renderCalc() {
+  const dec = 'inputmode="decimal"';
+  $('#calc-view').innerHTML = `
+    <div class="screen-head"><h1>בדיקת מחיר</h1><p>בלי תעודה: ממלאים לפי אפליקציית ההזמנות של הספק. מחיר הארגז ומס הקנייה לפני מע״מ, ההנחה באחוזים, והפיקדון ליחידה (בדרך כלל 30 אג׳ או ₪1).</p></div>
+    ${calcItems.map((item, i) => `<article class="sign-card calc-card" data-calc-card="${item.id}">
+      <div class="sign-top"><span class="meta">מוצר ${i + 1}</span><button type="button" class="link" data-calc-remove="${item.id}">${calcItems.length > 1 ? 'הסרה' : 'ניקוי'}</button></div>
+      ${calcField(item, 'name', 'שם המוצר (לא חובה)', 'maxlength="60" placeholder="למשל: קרלסברג חוזר 500"')}
+      <div class="fields calc2">${calcField(item, 'price', 'מחיר לארגז לפני מע״מ (₪)', `${dec} placeholder="105.57"`)}${calcField(item, 'discount', 'הנחה (%)', `${dec} placeholder="0"`)}</div>
+      <div class="fields calc3">${calcField(item, 'tax', 'מס קנייה לארגז (₪)', `${dec} placeholder="0"`)}${calcField(item, 'units', 'יח׳ בארגז (לא חובה)', 'inputmode="numeric" placeholder="24"')}${calcField(item, 'deposit', 'פיקדון ליח׳ (₪)', `${dec} placeholder="0.30"`)}</div>
+      <div class="calc-result" id="calc-res-${item.id}">${calcResultHtml(item)}</div>
+    </article>`).join('')}
+    <p class="hint">מחושב עם מע״מ ${esc(percent(vatBpOf(prefs.vat) ?? 1800))}. אפשר לשנות בהגדרות.</p>`;
+}
+
 // ---------- products dialog ----------
 function editProducts(id) {
   const sign = signById(id); state.editProducts = id;
@@ -478,6 +550,7 @@ $('#save-products').addEventListener('click', () => {
 $('#settings-button').addEventListener('click', () => {
   $('#store-name').value = prefs.storeName; $('#default-markup').value = prefs.markup;
   for (const r of document.querySelectorAll('[name=rounding]')) r.checked = r.value === prefs.rounding;
+  $('#calc-vat').value = prefs.vat; $('#calc-vat').setCustomValidity('');
   $('#default-markup').setCustomValidity('');
   $('#settings-dialog').showModal();
 });
@@ -486,11 +559,15 @@ $('#settings-form').addEventListener('submit', e => {
   e.preventDefault();
   const markup = decimal($('#default-markup').value), input = $('#default-markup');
   if (markupBp(markup) === null) { input.setCustomValidity('הרווח צריך להיות מספר בין 0 ל־1,000, בלי סימן %'); input.reportValidity(); return; }
-  prefs = {storeName: $('#store-name').value.trim().slice(0, 45) || prefs.storeName, markup, rounding: document.querySelector('[name=rounding]:checked')?.value || 'ninety'};
+  const vat = decimal($('#calc-vat').value) || '18', vatInput = $('#calc-vat');
+  if (vatBpOf(vat) === null) { vatInput.setCustomValidity('המע״מ צריך להיות מספר בין 0 ל־100, בלי סימן %'); vatInput.reportValidity(); return; }
+  prefs = {vat, storeName: $('#store-name').value.trim().slice(0, 45) || prefs.storeName, markup, rounding: document.querySelector('[name=rounding]:checked')?.value || 'ninety'};
   toast(store('coca-prefs-v2', prefs) ? `ההגדרות נשמרו · רווח ${markup}%` : 'הדפדפן לא מאפשר לשמור. ההגדרות בתוקף עד סגירת הדף');
   $('#settings-dialog').close();
   if (state.view === 'signs') renderSigns();
+  if (state.view === 'calc') renderCalc();
 });
+$('#calc-vat').addEventListener('input', e => e.target.setCustomValidity(''));
 
 // ---------- events ----------
 $('#upload-button').addEventListener('click', pickFile);
@@ -504,6 +581,17 @@ document.addEventListener('click', e => {
   if (again && !document.querySelector('dialog[open]') && (document.activeElement === document.body || !document.activeElement)) document.querySelector(again)?.focus({preventScroll: true});
 });
 function handleClick(b) {
+  if (b.dataset.mode) { notice(''); show(b.dataset.mode === 'calc' ? 'calc' : state.docView, false, true); }
+  if (b.dataset.calcAdd !== undefined) {
+    calcItems.push(newCalc()); saveCalc(); renderCalc();
+    const cards = document.querySelectorAll('[data-calc-card]'); cards[cards.length - 1].scrollIntoView({behavior: 'smooth', block: 'center'});
+    cards[cards.length - 1].querySelector('[data-calc-f="price"]').focus({preventScroll: true});
+  }
+  if (b.dataset.calcRemove) {
+    const i = calcItems.findIndex(c => c.id === b.dataset.calcRemove);
+    if (calcItems.length > 1) calcItems.splice(i, 1); else calcItems = [newCalc()];
+    saveCalc(); renderCalc();
+  }
   if (b.dataset.action === 'upload') pickFile();
   if (b.dataset.go) {
     notice('');
@@ -532,6 +620,12 @@ document.addEventListener('input', e => {
   if (el.dataset.units !== undefined) {
     setUnits(el.dataset.units, el.value);
     for (const s of state.signs) if (signRows(s).some(r => r.code === el.dataset.units)) refreshSign(s);
+    return;
+  }
+  if (el.dataset.calcF) {
+    const item = calcItems.find(c => c.id === el.dataset.calc); if (!item) return;
+    item[el.dataset.calcF] = el.value; saveCalc();
+    $('#calc-res-' + item.id).innerHTML = calcResultHtml(item);
     return;
   }
   const sign = signById(el.dataset.sign); if (!sign || !el.dataset.f) return;
