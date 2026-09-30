@@ -68,19 +68,24 @@ const PAGE = String(Math.random()); // history entries left from before a reload
 function show(view, fromHistory = false, replace = false) {
   if (state.busy) return;
   if (view === 'signs' && !state.signs.length) view = state.doc ? 'pick' : 'upload';
-  if (!fromHistory && state.doc && view !== state.view) {
-    try { if (!replace && DEPTH[view] > DEPTH[state.view] && view !== 'document') history.pushState({coca: view, page: PAGE}, ''); else history.replaceState({coca: view, page: PAGE}, ''); } catch {}
+  if (!fromHistory && !replace && state.doc && view !== state.view) {
+    try { if (DEPTH[view] > DEPTH[state.view] && view !== 'document') history.pushState({coca: view, page: PAGE}, ''); else history.replaceState({coca: view, page: PAGE}, ''); } catch {}
   }
+  // Coming back from the price check: the invoice screens were only hidden,
+  // so keep their scroll position and opened products.
+  const back = replace && view !== 'calc' && state.view === 'calc';
+  if (replace && view === 'calc' && state.view !== 'calc') state.docScroll = scrollY;
+  try { sessionStorage.setItem('coca-mode', view === 'calc' ? 'calc' : 'doc'); } catch {}
   state.view = view;
   if (view !== 'calc') state.docView = view;
   for (const v of VIEWS) $(`#${v}-view`).hidden = v !== view;
   for (const t of document.querySelectorAll('[data-mode]')) { const on = (t.dataset.mode === 'calc') === (view === 'calc'); t.classList.toggle('on', on); t.setAttribute('aria-pressed', on); }
-  if (view === 'document') renderDocument();
-  if (view === 'pick') renderPick();
+  if (view === 'document' && !back) renderDocument();
+  if (view === 'pick' && !back) renderPick();
   if (view === 'signs') renderSigns();
   if (view === 'calc') renderCalc();
   renderActionBar();
-  window.scrollTo({top: 0});
+  window.scrollTo({top: back ? state.docScroll || 0 : 0});
 }
 // One bottom bar per screen, like the other apps: no action appears twice.
 function renderActionBar() {
@@ -479,16 +484,22 @@ function calcInput(item) {
   const priceCents = cents(item.price);
   const discountBp = amountOrZero(item.discount), taxCents = amountOrZero(item.tax), depositCents = amountOrZero(item.deposit);
   const units = String(item.units).trim() ? positiveInt(item.units) || null : null;
+  const LIMIT = 10000000; // ₪100,000
+  if (String(item.price).trim() && (!priceCents || priceCents > LIMIT)) errors.push('המחיר לארגז');
   if (discountBp === null || discountBp >= 10000) errors.push('אחוז ההנחה');
+  if (taxCents > LIMIT || depositCents > LIMIT) errors.push('סכום גדול מדי');
   if (taxCents === null) errors.push('מס הקנייה');
   if (depositCents === null) errors.push('הפיקדון');
   if (String(item.units).trim() && !units) errors.push('יחידות בארגז (מספר שלם)');
   return {priceCents, discountBp, taxCents, depositCents, units, errors};
 }
 function calcResultHtml(item) {
+  try { return calcResultInner(item); } catch { return '<p class="calc-empty bad">בדוק את הסכומים שהוזנו.</p>'; }
+}
+function calcResultInner(item) {
   const vatBp = vatBpOf(prefs.vat) ?? 1800, vatText = percent(vatBp);
   const c = calcInput(item);
-  if (!c.priceCents) return `<p class="calc-empty">הזן מחיר לארגז כדי לראות את המחיר הסופי.</p>`;
+  if (!String(item.price).trim()) return `<p class="calc-empty">הזן מחיר לארגז כדי לראות את המחיר הסופי.</p>`;
   if (c.errors.length) return `<p class="calc-empty bad">בדוק: ${esc(c.errors.join(', '))}</p>`;
   const r = manualPrice(c, vatBp), full = c.discountBp ? manualPrice({...c, discountBp: 0}, vatBp) : null;
   const saved = full ? round(full.crate) - round(r.crate) : 0;
@@ -503,7 +514,7 @@ function calcResultHtml(item) {
     ${rec ? `<div class="rec"><span>💡 מחיר מכירה מומלץ: <b>${num(money(rec.cents))}</b> ליח׳ <span>(רווח ${esc(prefs.markup)}%)</span></span></div>` : ''}
     <details class="more"><summary>איך זה מחושב?</summary>${pairs([
       ['מחיר לארגז, לפני מע״מ', money(c.priceCents)],
-      c.discountBp ? [`הנחה ${percent(c.discountBp)}`, money(-round(fraction(BigInt(c.priceCents) * BigInt(c.discountBp), 10000))), 'good'] : null,
+      c.discountBp ? [`הנחה ${percent(c.discountBp)}`, money(-r.discount), 'good'] : null,
       c.taxCents ? ['מס קנייה', money(c.taxCents)] : null,
       ['לפני מע״מ', money(round(r.beforeVat)), 'strong'],
       [`מע״מ ${vatText}`, money(round(r.vat))],
@@ -591,6 +602,8 @@ function handleClick(b) {
     const i = calcItems.findIndex(c => c.id === b.dataset.calcRemove);
     if (calcItems.length > 1) calcItems.splice(i, 1); else calcItems = [newCalc()];
     saveCalc(); renderCalc();
+    const cards = document.querySelectorAll('[data-calc-card]');
+    cards[Math.min(i, cards.length - 1)]?.querySelector('[data-calc-remove]')?.focus({preventScroll: true});
   }
   if (b.dataset.action === 'upload') pickFile();
   if (b.dataset.go) {
@@ -651,4 +664,7 @@ window.addEventListener('popstate', e => {
   notice(''); show(e.state?.coca || 'document', true);
 });
 window.addEventListener('beforeunload', e => { if (state.signs.length && state.dirty) { e.preventDefault(); e.returnValue = ''; } });
-show('upload');
+// A phone may reload the page while the user checks prices in the supplier's app.
+let startCalc = false;
+try { startCalc = sessionStorage.getItem('coca-mode') === 'calc'; } catch {}
+show(startCalc ? 'calc' : 'upload');

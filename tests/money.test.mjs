@@ -60,3 +60,10 @@ test('price check without an invoice matches the invoice rows',()=>{
   assert.equal(noUnits.unit,null);assert.equal(round(noUnits.crate),9316);
   for(const bad of [{priceCents:0},{priceCents:100,discountBp:10000},{priceCents:100,units:0},{priceCents:100,taxCents:-1},{priceCents:1.5}])assert.throws(()=>manualPrice(bad,1800));
 });
+test('price-check breakdown lines always add up to the shown totals',()=>{
+  for(let price=5000;price<=30000;price+=37)for(const disc of [0,500,1000,1600,3400]){
+    const r=manualPrice({priceCents:price,discountBp:disc,taxCents:412,depositCents:30,units:24},1800);
+    assert.equal(price-r.discount+412,round(r.beforeVat));
+    assert.equal(round(r.beforeVat)+round(r.vat)+round(r.deposit),round(r.crate));
+  }
+});

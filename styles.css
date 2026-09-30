@@ -10,6 +10,7 @@
   font-family:Heebo,Arial,sans-serif;color:var(--ink);background:var(--page);font-synthesis:none;-webkit-text-size-adjust:100%;
 }
 *{box-sizing:border-box}
+html{scroll-padding-top:124px;scroll-padding-bottom:calc(84px + env(safe-area-inset-bottom))}
 body{margin:0;background:var(--page);min-height:100vh}
 button,input{font:inherit;color:inherit}
 button{cursor:pointer;border:0;background:none;touch-action:manipulation;font-weight:900}

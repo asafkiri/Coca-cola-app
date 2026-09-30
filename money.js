@@ -101,11 +101,14 @@ export function manualPrice({priceCents, discountBp = 0, taxCents = 0, depositCe
   if (!(priceCents > 0) || discountBp >= 10000) throw new Error('ערך לא תקין');
   if (units !== null && (!Number.isInteger(units) || units < 1 || units > 1000)) throw new Error('מספר יחידות לא תקין');
   const d = 100000000n; // amounts below are in agorot × d
-  const goods = BigInt(priceCents) * BigInt(10000 - discountBp) * 10000n;
+  // The discount is rounded to the agora first, as on the supplier's invoice,
+  // so the breakdown lines add up exactly.
+  const discount = round(fraction(BigInt(priceCents) * BigInt(discountBp), 10000));
+  const goods = BigInt(priceCents - discount) * d;
   const beforeVat = goods + BigInt(taxCents) * d;
   const merch = beforeVat * BigInt(10000 + vatBp) / 10000n; // exact: d is a multiple of 10000
   const deposit = units ? BigInt(depositCents) * BigInt(units) * d : 0n;
-  const out = {goods: fraction(goods, d), beforeVat: fraction(beforeVat, d), vat: fraction(merch - beforeVat, d), deposit: fraction(deposit, d), crate: fraction(merch + deposit, d), unit: null};
+  const out = {discount, goods: fraction(goods, d), beforeVat: fraction(beforeVat, d), vat: fraction(merch - beforeVat, d), deposit: fraction(deposit, d), crate: fraction(merch + deposit, d), unit: null};
   if (units) {
     const du = d * BigInt(units);
     out.unit = {base: fraction(merch, du), pass: fraction(BigInt(depositCents) * du, du), total: fraction(merch + deposit, du)};
