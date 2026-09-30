@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#c91435">
+  <meta name="description" content="מחיר סופי לארגז מתוך תעודת קוקה־קולה והכנת שלטי מבצע. התעודה מעובדת במכשיר בלבד.">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; worker-src 'self' blob:; img-src 'self' data: blob:; style-src 'self'; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'">
+  <title>קוקה־קולה · מחירים ושלטים</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="styles.css">
+  <script type="module" src="app.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="top-inner"><div class="brand"><span class="brand-icon" aria-hidden="true">▤</span><div><strong>מחירים ושלטים</strong><span>לתעודות קוקה־קולה</span></div></div><button class="icon-button" id="settings-button" aria-label="הגדרות">⚙</button></div>
+  </header>
+  <main>
+    <nav class="tabs" aria-label="מסכי האפליקציה"><button id="document-tab" class="active" aria-current="page">התעודה שלי</button><button id="signs-tab" disabled>שלטי מבצע <span id="sign-count">0</span></button></nav>
+    <div id="notice" role="alert" hidden></div>
+    <section id="document-view">
+      <div id="upload-panel" class="upload-panel">
+        <div class="upload-symbol" aria-hidden="true">↑</div><h1>כמה באמת עולה כל ארגז?</h1><p>בחר תעודת PDF שהורדת מאפליקציית קוקה־קולה.</p>
+        <button class="primary" id="upload-button">בחירת תעודה</button>
+        <p class="local-note">התעודה נשארת במכשיר שלך. משתמשים רק כשצריך.</p>
+      </div>
+      <input id="pdf-file" type="file" accept="application/pdf,.pdf" hidden>
+      <div id="loading" class="loading" role="status" hidden><span class="spinner"></span><strong id="loading-label">קורא ובודק את התעודה…</strong></div>
+      <div id="document-content" hidden></div>
+    </section>
+    <section id="signs-view" hidden>
+      <div class="section-heading"><div><h1>עריכת שלטים</h1><p>המחיר לבקבוק מחושב לפי הכמות שתזין.</p></div><button class="secondary" id="add-sign">＋ הוסף שלט</button></div>
+      <div id="sign-editors"></div>
+      <section id="preview-area" hidden><div class="preview-heading"><h2>תצוגה לפני הדפסה</h2><fieldset id="layout-picker"><legend class="sr-only">שלטים בדף</legend><label><input type="radio" name="layout" value="4" checked>4 בדף</label><label><input type="radio" name="layout" value="2">2 בדף</label><label><input type="radio" name="layout" value="1">1 בדף</label></fieldset></div><div id="preview-pages"></div><div class="export-actions"><button class="primary" id="share-signs">שיתוף / שמירת תמונה</button><button class="secondary" id="print-signs">הדפסה / PDF</button></div><p class="help">רק תוכן השלטים מופיע בהדפסה ובתמונה. מחירי הקנייה אינם מופיעים.</p></section>
+    </section>
+    <footer class="app-footer">כל תעודה עומדת בפני עצמה <span>·</span> גרסה 1.0</footer>
+  </main>
+  <div id="selection-bar" hidden><span id="selected-label"></span><div><button id="separate-signs" class="primary">שלט לכל מוצר</button><button id="shared-sign" class="secondary">שלט משותף</button></div></div>
+  <dialog id="settings-dialog"><form method="dialog"><div class="dialog-heading"><h2>הגדרות שלטים</h2><button class="icon-button" aria-label="סגור">×</button></div><label>שם החנות בשלט<input id="store-name" maxlength="45" autocomplete="organization"></label><label>תוספת רווח כברירת מחדל (%)<input id="default-markup" type="text" inputmode="decimal"></label><p class="help">תוספת לעלות הסחורה, כמו בייטבתה. פיקדון וערך אריזה מצטרפים ללא תוספת רווח.</p><p class="help">ההגדרות נשמרות רק בדפדפן הזה. התעודות והשלטים הפעילים אינם נשמרים לאחר סגירת הדף או רענון.</p><button type="button" id="save-settings" class="primary">שמירת הגדרות</button></form></dialog>
+  <dialog id="products-dialog"><div class="dialog-heading"><h2>מוצרים בשלט</h2><button id="close-products" class="icon-button" aria-label="סגור">×</button></div><div id="product-options"></div><button id="save-products" class="primary">עדכון המוצרים</button></dialog>
+  <div id="toast" role="status" hidden></div><div id="print-root"></div>
+  <noscript>יש להפעיל JavaScript בדפדפן כדי לקרוא תעודות ולהכין שלטים.</noscript>
+</body>
+</html>
