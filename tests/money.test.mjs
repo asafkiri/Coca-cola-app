@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {fixed,fraction,round,money,percent,gross,crateCost,unitParts,unitsFromDeposit,packSize,recommend,realizedMarkup,validateInvoice} from '../money.js';
+import {fixed,fraction,round,money,percent,gross,crateCost,unitParts,unitsFromDeposit,packSize,priceBasis,recommend,realizedMarkup,validateInvoice} from '../money.js';
 const row=()=>({id:'x',code:'10000',name:'מוצר בדיקה',unitPrice:5000,quantityMilli:2000,gross:10000,discountBp:2000,discount:-2000,packaging:2000,tax:1000,deposit:1000,total:12000});
 const doc=()=>({rows:[row()],vatBp:1800,supplyRows:[{code:'10000',quantityMilli:2000}],summary:{gross:10000,discount:-2000,packaging:2000,tax:1000,deposit:1000,rounding:0,beforeVat:12000,vat:2160,total:14160}});
 test('parse PDF amounts without floating point or losing trailing minus',()=>{assert.equal(fixed('1,234.56-'),-123456);assert.equal(fixed('0.00'),0);assert.equal(fixed('18.0'),1800);assert.equal(fixed('2.5',3),2500);for(const s of ['',null,'3,4','1.234','NaN','12₪','Infinity'])assert.throws(()=>fixed(s));});
@@ -35,4 +35,13 @@ test('per-unit cost keeps deposit separate and rounds only at the end',()=>{
 test('multipack size comes from the product name',()=>{
   assert.equal(packSize('קרלסברג 6 בק 330 מ"ל פקדון'),6);assert.equal(packSize('מארז ק"ק ZERO 6 פח FRIDGE-PACK מבצע'),6);
   assert.equal(packSize('קוקה קולה 500 מ"ל'),1);assert.equal(packSize('בקבוק 1.5 ליטר'),1);assert.equal(packSize(''),1);
+});
+test('returnable packaging is set aside from prices and recommendations',()=>{
+  // Returnable 500ml crate: 40 crates, 20 bottles each, packaging 1396.00, tax 208.00, no deposit.
+  const r={name:'קרלסברג מלא חוזר',unitPrice:10557,quantityMilli:40000,gross:422280,discountBp:800,discount:-33782,packaging:139600,tax:20800,deposit:0,total:548898};
+  const b=priceBasis(r);
+  assert.equal(b.total,409298);assert.equal(b.packaging,0);assert.equal(r.total,548898);
+  assert.equal(round(crateCost(b,1800)),12074);assert.equal(round(unitParts(b,1800,20).total),604);
+  assert.equal(recommend(b,1800,20,2500,1,'ninety').cents,790);
+  assert.equal(priceBasis(row()).total,10000);assert.equal(priceBasis({...row(),packaging:0}).total,12000);
 });

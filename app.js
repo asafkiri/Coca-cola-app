@@ -1,5 +1,5 @@
 import {readPdf} from './pdf-reader.js';
-import {fixed, fraction, round, money, percent, gross, crateCost, unitParts, unitsFromDeposit, packSize, recommend, realizedMarkup} from './money.js';
+import {fixed, fraction, round, money, percent, gross, crateCost, unitParts, unitsFromDeposit, packSize, priceBasis, recommend, realizedMarkup} from './money.js';
 import {drawPage, pageSize, signLine} from './sign-canvas.js';
 
 const MAX_SIGNS = 12;
@@ -101,8 +101,10 @@ function promoTitle(p) { return p.text || `מבצע ${p.id}`; }
 function savedWithVat(rows) { return round(gross(-rows.reduce((a, r) => a + r.discount, 0), state.doc.vatBp)); }
 function itemHtml(row, groupPct) {
   const d = state.doc, units = unitsOf(row);
-  const crate = round(crateCost(row, d.vatBp));
-  const unit = units ? unitParts(row, d.vatBp, units) : null;
+  const base = priceBasis(row);
+  const crate = round(crateCost(base, d.vatBp));
+  const unit = units ? unitParts(base, d.vatBp, units) : null;
+  const returnable = row.packaging ? round(crateCost({total: row.packaging, quantityMilli: row.quantityMilli}, d.vatBp)) : 0;
   const lineVat = round(gross(row.total, d.vatBp));
   const chip = row.discountBp > 0 && row.discountBp !== groupPct ? `<span class="chip">הנחה ${num(percent(row.discountBp))}</span>` : '';
   const pack = packOf(row);
@@ -118,15 +120,16 @@ function itemHtml(row, groupPct) {
     row.tax ? ['מס קנייה', money(row.tax)] : null,
     ['סה״כ בתעודה, לפני מע״מ', money(row.total), 'strong'],
     [`כולל מע״מ ${percent(d.vatBp)}`, money(lineVat)],
+    row.packaging ? ['אריזה חוזרת, בנפרד (כולל מע״מ)', money(-round(gross(row.packaging, d.vatBp)))] : null,
     [`לארגז (חלקי ${quantity(row)})`, money(crate), 'strong'],
     unit ? [`ליחידה (חלקי ${units})`, money(round(unit.total)), 'strong'] : null,
     unit && pack > 1 ? [`למארז (${pack} יח׳)`, money(round(times(unit.total, pack))), 'strong'] : null,
-    unit && (row.deposit || row.packaging) ? [`מתוך זה ${row.deposit && row.packaging ? 'פיקדון וערך אריזה' : row.deposit ? 'פיקדון' : 'ערך אריזה'} ליחידה`, money(round(unit.pass))] : null,
+    unit && row.deposit ? ['מתוך זה פיקדון ליחידה', money(round(unit.pass))] : null,
   ]);
   return `<article class="item" data-row="${row.id}">
     <details>
       <summary>
-        <div class="item-main"><div class="item-name">${esc(row.name)}</div><div class="meta">${esc(crates(row.quantityMilli))}${units ? ` · ${units} יח׳ בארגז` : ''}</div></div>
+        <div class="item-main"><div class="item-name">${esc(row.name)}</div><div class="meta">${esc(crates(row.quantityMilli))}${units ? ` · ${units} יח׳ בארגז` : ''}</div>${returnable ? `<span class="returnable">אריזה חוזרת בנפרד: ${num(money(returnable))} לארגז</span>` : ''}</div>
         <div class="item-price">${chip}${price}</div>
       </summary>
       <div class="item-details">
@@ -175,7 +178,7 @@ function renderDocument() {
     </section>
     ${d.hasReturns ? '<p class="note">בתעודה יש גם אריזות מוחזרות. הן אינן נכללות במחירי המוצרים.</p>' : ''}
     ${d.warnings.map(w => `<p class="note warn">${esc(w)}</p>`).join('')}
-    <div class="section-head"><h2>המחירים שלך</h2><p>מחיר סופי: אחרי ההנחה, כולל מע״מ, פיקדון וכל החיובים (גם ה"חסכת" כולל מע״מ). לחיצה על מוצר מציגה את החישוב.</p></div>
+    <div class="section-head"><h2>המחירים שלך</h2><p>מחיר סופי: אחרי ההנחה, כולל מע״מ, פיקדון וכל החיובים (גם ה"חסכת" כולל מע״מ).${d.rows.some(r => r.packaging) ? ' ערך אריזה חוזרת (ארגז ובקבוקים שמוחזרים לספק) מוצג בנפרד ולא נכלל במחיר.' : ''} לחיצה על מוצר מציגה את החישוב.</p></div>
     ${groups}`;
 }
 // Updates the product in place: re-rendering the list would move or replace
@@ -267,7 +270,7 @@ function renderPick() {
     const rows = d.rows.filter(r => r.promoId === p.id);
     return pickCard(`promo:${p.id}`, promoTitle(p), `${plural(rows.length, 'מוצר אחד', 'מוצרים')}: ${esc(rows.map(r => r.name).join(' · '))}`, '');
   }).join('');
-  const singles = d.rows.map(r => pickCard(`row:${r.id}`, r.name, esc(unitsOf(r) ? `${money(round(times(unitParts(r, d.vatBp, unitsOf(r)).total, packOf(r))))} ${perSale(r)} · ${money(round(crateCost(r, d.vatBp)))} לארגז` : `${money(round(crateCost(r, d.vatBp)))} לארגז`), r.discountBp ? num(percent(r.discountBp)) : '')).join('');
+  const singles = d.rows.map(r => pickCard(`row:${r.id}`, r.name, esc(unitsOf(r) ? `${money(round(times(unitParts(priceBasis(r), d.vatBp, unitsOf(r)).total, packOf(r))))} ${perSale(r)} · ${money(round(crateCost(priceBasis(r), d.vatBp)))} לארגז` : `${money(round(crateCost(priceBasis(r), d.vatBp)))} לארגז`), r.discountBp ? num(percent(r.discountBp)) : '')).join('');
   $('#pick-view').innerHTML = `
     <div class="screen-head"><h1>הכנת שלטי מבצע</h1><p>כל בחירה היא שלט אחד. אפשר עד ${MAX_SIGNS} שלטים.</p></div>
     ${promos ? `<h2 class="list-label">מבצעי הספק בתעודה</h2><p class="hint top">כל מוצרי המבצע נכנסים לשלט אחד. תיאור המבצע של הספק ומחירי העלות לא מודפסים; בשלט מופיע רק מה שממלאים בעריכה.</p>${promos}` : ''}
@@ -292,7 +295,7 @@ function recommendation(sign) {
   if (mixedPacks(sign)) return {missing: MIXED};
   const m = markupBp(prefs.markup) ?? 2500;
   // A shared sign must cover the most expensive product in it.
-  const all = rows.map(r => ({row: r, ...recommend(r, d.vatBp, unitsOf(r), m, q * packOf(r), prefs.rounding)}));
+  const all = rows.map(r => ({row: r, ...recommend(priceBasis(r), d.vatBp, unitsOf(r), m, q * packOf(r), prefs.rounding)}));
   return {...all.reduce((a, b) => b.cents > a.cents ? b : a), ranked: all.some(x => x.cents !== all[0].cents)};
 }
 function packSign(sign) { const rows = signRows(sign); return rows.length > 0 && rows.every(r => packOf(r) > 1); }
@@ -312,7 +315,7 @@ function profitHtml(sign) {
   const sale = cents(sign.price), q = bundleQty(sign);
   if (!sale || !q) return '';
   const d = state.doc;
-  const rates = signRows(sign).filter(unitsOf).map(r => realizedMarkup(r, d.vatBp, unitsOf(r), q * packOf(r), sale)).filter(v => v !== null);
+  const rates = signRows(sign).filter(unitsOf).map(r => realizedMarkup(priceBasis(r), d.vatBp, unitsOf(r), q * packOf(r), sale)).filter(v => v !== null);
   if (!rates.length) return '';
   const min = Math.min(...rates);
   if (min < 0) return '<p class="profit bad">המחיר נמוך מהעלות. בדוק את המחיר או את מספר היחידות בארגז.</p>';
@@ -395,7 +398,7 @@ function problems() {
       const q = bundleQty(s), noUnits = signRows(s).find(r => !unitsOf(r));
       if (noUnits) out.push(`${name}: חסר מספר היחידות בארגז של ${noUnits.name}, המחיר לא נבדק מול העלות`);
       else if (mixedPacks(s)) out.push(`${name}: ${MIXED}`);
-      if (signRows(s).some(r => unitsOf(r) && realizedMarkup(r, state.doc.vatBp, unitsOf(r), q * packOf(r), d.priceCents) < 0)) out.push(`${name}: המחיר נמוך מהעלות`);
+      if (signRows(s).some(r => unitsOf(r) && realizedMarkup(priceBasis(r), state.doc.vatBp, unitsOf(r), q * packOf(r), d.priceCents) < 0)) out.push(`${name}: המחיר נמוך מהעלות`);
       if (d.oldCents && d.oldCents <= d.priceCents) out.push(`${name}: מחיר ה"במקום" אינו גבוה ממחיר המבצע`);
     }
   });

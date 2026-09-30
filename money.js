@@ -62,6 +62,12 @@ export function packSize(name) {
   const m = String(name || '').match(/(?:^|\s)(\d{1,2})\s*(?:בק|פח)(?=\s|$)/);
   return m && Number(m[1]) > 1 ? Number(m[1]) : 1;
 }
+// Returnable crates and bottles ("ערך אריזה") are refunded when they go back
+// to the supplier, so prices and recommendations leave them out; the app shows
+// them separately. The invoice itself is validated with them included.
+export function priceBasis(row) {
+  return row.packaging ? {...row, total: row.total - row.packaging, packaging: 0} : row;
+}
 export function unitParts(row, vatBp, units) {
   if (!Number.isInteger(units) || units <= 0 || units > 10000) throw new Error('יש להזין מספר בקבוקים שלם וחיובי');
   const denom = 10000n * BigInt(row.quantityMilli) * BigInt(units);
