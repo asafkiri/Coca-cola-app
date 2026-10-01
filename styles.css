@@ -161,7 +161,7 @@ details>summary::-webkit-details-marker{display:none}
 .seg>label:has(input:focus-visible){outline:3px solid #60a5fa}
 /* Four layout buttons no longer fit beside the heading on a phone: their own row. */
 .seg.small{width:100%}
-.seg.small>button{flex:1 1 auto;min-height:40px;font-size:12px;padding:6px 4px}
+.seg.small>button{flex:1 1 0;min-width:0;min-height:40px;font-size:12px;padding:6px 4px}
 .kinds{margin-bottom:10px}
 .fields{display:grid;gap:8px;grid-template-columns:1fr 110px}
 .fields.bundle{grid-template-columns:80px 1fr 110px}
