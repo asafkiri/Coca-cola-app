@@ -159,7 +159,9 @@ details>summary::-webkit-details-marker{display:none}
 .seg>button.on,.seg>label:has(input:checked){background:var(--rose);color:#fff}
 .seg>label input{position:absolute;opacity:0;width:1px;height:1px}
 .seg>label:has(input:focus-visible){outline:3px solid #60a5fa}
-.seg.small>button{flex:none;white-space:nowrap;min-height:40px;font-size:12px;padding:6px 12px}
+/* Four layout buttons no longer fit beside the heading on a phone: their own row. */
+.seg.small{width:100%}
+.seg.small>button{flex:1 1 auto;min-height:40px;font-size:12px;padding:6px 4px}
 .kinds{margin-bottom:10px}
 .fields{display:grid;gap:8px;grid-template-columns:1fr 110px}
 .fields.bundle{grid-template-columns:80px 1fr 110px}

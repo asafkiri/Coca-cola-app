@@ -14,7 +14,7 @@ const ICON = {
   check: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12l5 5 9-10"/></svg>',
 };
 
-const state = {doc: null, view: 'upload', docView: 'upload', units: {}, signs: [], perPage: 4, pages: [], busy: false, dirty: false, editProducts: null};
+const state = {doc: null, view: 'upload', docView: 'upload', units: {}, signs: [], perPage: 4, small: false, pages: [], busy: false, dirty: false, editProducts: null};
 let seq = 0;
 
 // ---------- preferences (browser only) ----------
@@ -357,9 +357,11 @@ function editorHtml(sign, index) {
     <div class="fields two">${field(sign, 'validUntil', 'בתוקף עד (רשות)', `type="date"${sign.validUntil ? '' : ' class="empty"'}`)}${field(sign, 'note', 'הערה (לא חובה)', 'maxlength="80" placeholder="עד גמר המלאי"')}</div>
   </article>`;
 }
+// "2 בדף (קטן)" is the 2-per-page layout drawn smaller (sign-canvas.js).
+function smallPage() { return state.perPage === 2 && state.small; }
 function renderSigns() {
   $('#sign-editors').innerHTML = state.signs.map(editorHtml).join('');
-  for (const b of document.querySelectorAll('[data-per-page]')) { const on = Number(b.dataset.perPage) === state.perPage; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on); }
+  for (const b of document.querySelectorAll('[data-per-page]')) { const on = Number(b.dataset.perPage) === state.perPage && b.hasAttribute('data-small') === smallPage(); b.classList.toggle('on', on); b.setAttribute('aria-pressed', on); }
   renderPreview();
 }
 function refreshSign(sign) {
@@ -380,15 +382,15 @@ function drawData(sign) {
 const fontsReady = Promise.all(['900 40px Heebo', '800 40px Heebo'].map(f => document.fonts.load(f, 'אב₪1'))).catch(() => {});
 fontsReady.then(() => { state.pages = []; if (state.view === 'signs') renderPreview(); });
 function renderPreview() {
-  const data = state.signs.map(drawData), per = state.perPage;
+  const data = state.signs.map(drawData), per = state.perPage, small = smallPage();
   const chunks = [];
   for (let i = 0; i < data.length; i += per) chunks.push(data.slice(i, i + per));
   const guides = chunks.length === 1;
   // Redraw only pages whose content changed.
   state.pages = chunks.map((signs, i) => {
-    const key = JSON.stringify([per, prefs.storeName, guides, signs]), old = state.pages[i];
+    const key = JSON.stringify([per, small, prefs.storeName, guides, signs]), old = state.pages[i];
     if (old && old.key === key) return old;
-    return {key, canvas: drawPage(old?.canvas || document.createElement('canvas'), signs, per, prefs.storeName, guides)};
+    return {key, canvas: drawPage(old?.canvas || document.createElement('canvas'), signs, per, prefs.storeName, guides, small)};
   });
   const host = $('#preview-pages');
   host.replaceChildren(...state.pages.flatMap(({canvas}, i) => {
@@ -587,7 +589,7 @@ for (const d of document.querySelectorAll('dialog')) d.addEventListener('click',
 document.addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b || b.disabled) return;
   // Screens are redrawn after these buttons; keep keyboard focus on the same control.
-  const again = b.dataset.pick ? `[data-pick="${b.dataset.pick}"]` : b.dataset.kind ? `[data-kind="${b.dataset.kind}"][data-sign="${b.dataset.sign}"]` : b.dataset.perPage ? `[data-per-page="${b.dataset.perPage}"]` : null;
+  const again = b.dataset.pick ? `[data-pick="${b.dataset.pick}"]` : b.dataset.kind ? `[data-kind="${b.dataset.kind}"][data-sign="${b.dataset.sign}"]` : b.dataset.perPage ? `[data-per-page="${b.dataset.perPage}"]${b.hasAttribute('data-small') ? '[data-small]' : ':not([data-small])'}` : null;
   handleClick(b);
   if (again && !document.querySelector('dialog[open]') && (document.activeElement === document.body || !document.activeElement)) document.querySelector(again)?.focus({preventScroll: true});
 });
@@ -612,7 +614,7 @@ function handleClick(b) {
   }
   if (b.dataset.pick) togglePick(b.dataset.pick);
   if (b.dataset.export) checked(b.dataset.export);
-  if (b.dataset.perPage) { state.perPage = Number(b.dataset.perPage); state.dirty = true; renderSigns(); }
+  if (b.dataset.perPage) { state.perPage = Number(b.dataset.perPage); state.small = b.hasAttribute('data-small'); state.dirty = true; renderSigns(); }
   if (b.dataset.editProducts) editProducts(b.dataset.editProducts);
   const sign = signById(b.dataset.sign || b.dataset.apply);
   if (!sign) return;

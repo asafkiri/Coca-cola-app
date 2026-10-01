@@ -235,14 +235,25 @@ function drawSlot(ctx, s, y0, slotH, W, storeName) {
     if (hasMore && moreCount > 0) inked('ועוד ' + moreCount + ' מוצרים…');
   }
 }
+// "2 בדף (קטן)": the "2 בדף (גדול)" page shrunk around the centre of the A4.
+// From the example of 1.10.2026: on the A4 image each sign is about
+// 17.3×12.3 cm instead of 19.6×14 cm.
+export const SIGN_SMALL_SCALE = 0.88;
 // Draws one A4 page. Empty slots get a dashed cutting guide when all signs
 // fit on a single page, as in the other apps.
-export function drawPage(canvas, signs, perPage, storeName, cutGuides) {
+export function drawPage(canvas, signs, perPage, storeName, cutGuides, small = false) {
   const {W, H} = pageSize(perPage), pad = 40, gap = 24;
   const slotH = Math.floor((H - pad * 2 - gap * (perPage - 1)) / perPage);
   canvas.width = W; canvas.height = H;
   const ctx = canvas.getContext('2d');
   ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, W, H);
+  // Small: the same page exactly (fonts, spacing, line breaks, cut guides),
+  // only scaled down around the centre, with white margins. Setting the
+  // canvas size above resets the transform, so a redraw never compounds it.
+  if (small) {
+    ctx.translate(Math.round(W * (1 - SIGN_SMALL_SCALE) / 2), Math.round(H * (1 - SIGN_SMALL_SCALE) / 2));
+    ctx.scale(SIGN_SMALL_SCALE, SIGN_SMALL_SCALE);
+  }
   ctx.textAlign = 'center'; ctx.direction = 'rtl';
   signs.forEach((s, i) => drawSlot(ctx, s, pad + i * (slotH + gap), slotH, W, storeName));
   if (cutGuides) {
